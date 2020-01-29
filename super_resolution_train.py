@@ -16,7 +16,7 @@ if not os.path.exists("data"):
 
 class SUPER_RESOLUTION_PIXELS():
     def __init__(self):
-        self.num_epochs = 50
+        self.num_epochs = 20
         self.batch_size = 32
         self.input_height = 32
         self.input_width = 32
@@ -26,9 +26,12 @@ class SUPER_RESOLUTION_PIXELS():
         self.train_dir = 'data/train'
 
         self.num_steps_per_epoch = len(
-            glob.glob(train_dir + "/*-in.jpg")) // batch_size
+            glob.glob(self.train_dir + "/*-in.jpg")) // self.batch_size
         self.val_steps_per_epoch = len(
-            glob.glob(val_dir + "/*-in.jpg")) // batch_size
+            glob.glob(self.val_dir + "/*-in.jpg")) // self.batch_size
+
+        self.val_generator = self.image_generator(self.batch_size, self.val_dir)
+        self.in_sample_images, self.out_sample_images = next(self.val_generator)
 
     def build_model(self):
         self.model = Sequential()
@@ -46,24 +49,24 @@ class SUPER_RESOLUTION_PIXELS():
                       metrics=[self.perceptual_distance])
 
     def train(self):
-        model.fit_generator(image_generator(batch_size, train_dir),
-                            steps_per_epoch=num_steps_per_epoch,
-                            epochs=num_epochs,
-                            validation_steps=val_steps_per_epoch,
-                            validation_data=val_generator)
+        self.model.fit_generator(self.image_generator(self.batch_size, self.train_dir),
+                            steps_per_epoch=self.num_steps_per_epoch,
+                            epochs=self.num_epochs,
+                            validation_steps=self.val_steps_per_epoch,
+                            validation_data=self.val_generator)
 
-        model.save('sres_model.h5')
+        self.model.save('sres_model.h5')
 
-    def image_generator(nbatch_size, img_dir):
+    def image_generator(self, nbatch_size, img_dir):
         """A generator that returns small images and large images.  DO NOT ALTER the validation set"""
         input_filenames = glob.glob(img_dir + "/*-in.jpg")
         counter = 0
         random.shuffle(input_filenames)
         while True:
             small_images = np.zeros(
-                (nbatch_size, input_width, input_height, 3))
+                (nbatch_size, self.input_width, self.input_height, 3))
             large_images = np.zeros(
-                (nbatch_size, output_width, output_height, 3))
+                (nbatch_size, self.output_width, self.output_height, 3))
             if counter+nbatch_size >= len(input_filenames):
                 counter = 0
             for i in range(nbatch_size):
@@ -74,7 +77,7 @@ class SUPER_RESOLUTION_PIXELS():
             yield (small_images, large_images)
             counter += nbatch_size
 
-    def perceptual_distance(y_true, y_pred):
+    def perceptual_distance(self, y_true, y_pred):
         """Calculate perceptual distance, DO NOT ALTER"""
         y_true *= 255
         y_pred *= 255
@@ -85,11 +88,11 @@ class SUPER_RESOLUTION_PIXELS():
 
         return K.mean(K.sqrt((((512+rmean)*r*r)/256) + 4*g*g + (((767-rmean)*b*b)/256)))
 
-val_generator = image_generator(batch_size, val_dir)
-in_sample_images, out_sample_images = next(val_generator)
 
 def main():
     sr_pixels = SUPER_RESOLUTION_PIXELS()
+    sr_pixels.build_model()
+    sr_pixels.train()
 
 if __name__ == "__main__":
     main()

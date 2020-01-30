@@ -14,16 +14,25 @@ if not os.path.exists("data"):
     subprocess.check_output(
         "mkdir data && curl https://storage.googleapis.com/wandb/flower-enhance.tar.gz | tar xzf - -C data", shell=True)
 
+"""
+    Implement model with General Adversarial Network Architecture
+"""
 class SUPER_RESOLUTION_PIXELS():
     def __init__(self):
         self.num_epochs = 20
         self.batch_size = 32
+        self.channels = 3
         self.input_height = 32
         self.input_width = 32
         self.output_height = 256
         self.output_width = 256
+        self.lr_shape = (self.input_height, self.input_width, self.channels)
+        self.hr_shape = (self.output_height, self.output_width, self.channels)
         self.val_dir = 'data/test'
         self.train_dir = 'data/train'
+
+        self.disFilters = 64
+        self.genFilters = 64
 
         self.num_steps_per_epoch = len(
             glob.glob(self.train_dir + "/*-in.jpg")) // self.batch_size
@@ -56,6 +65,31 @@ class SUPER_RESOLUTION_PIXELS():
                             validation_data=self.val_generator)
 
         self.model.save('sres_model.h5')
+
+    def build_discriminator(self):
+        def d_block(layer_input, filters, strides=1, batchNormal=True):
+            d = layers.Conv2D(filters, kernel_size=3, strides=strides, padding='same')(layer_input)
+            d = layers.LeakyReLU(alpha=0.2)(d)
+            if batchNormal:
+                d = BatchNormalization(momentum=0.8)(d)
+            return d
+
+        # Input image
+        d0 = Input(shape=self.hr_shape)
+        d1 = d_block(d0, self.disFilters, batchNormal=False)
+        d2 = d_block(d1, self.disFilters, strides=2)
+        d3 = d_block(d2, self.disFilters * 2)
+        d4 = d_block(d3, self.disFilters * 2, strides=2)
+        d5 = d_block(d4, self.disFilters * 4)
+        d6 = d_block(d5, self.disFilters * 4, strides=2)
+        d7 = d_block(d6, self.disFilters * 8)
+        d8 = d_block(d7, self.disFilters * 8, strides=2)
+
+        d9 = Dense(self.disFilters*16)(d8)
+        d10 = LeakyReLU(alpha=0.2)(d9)
+        validity = Dense(1, activation='sigmoid')(d10)
+
+        return Model(d10, validity)
 
     def image_generator(self, nbatch_size, img_dir):
         """A generator that returns small images and large images.  DO NOT ALTER the validation set"""

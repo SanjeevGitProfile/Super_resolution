@@ -4,7 +4,7 @@ import subprocess
 import os
 from PIL import Image
 import numpy as np
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras import layers
 from tensorflow.keras import backend as K
 
@@ -33,6 +33,7 @@ class SUPER_RESOLUTION_PIXELS():
 
         self.disFilters = 64
         self.genFilters = 64
+        self.n_residual_blocks = 8
 
         self.num_steps_per_epoch = len(
             glob.glob(self.train_dir + "/*-in.jpg")) // self.batch_size
@@ -65,6 +66,46 @@ class SUPER_RESOLUTION_PIXELS():
                             validation_data=self.val_generator)
 
         self.model.save('sres_model.h5')
+
+    def build_generator(self):
+        """
+            Takes input layer as low resolution image(img_lr) and generates high
+            resolution image(gen_hr).
+        """
+
+        def residual_block(layer_input, filters):
+            d = layers.Conv2D(filters, kernel_size=3, strides=1, padding='same')(layer_input)
+            d = Activation('relu')(d)
+            d = BatchNormalization(momentum=0.8)(d)
+            d = layers.Conv2D(filters, kernel_size=3, strides=1, padding='same')(d)
+            d = BatchNormalization(momentum=0.8)(d)
+            d = Add()([d, layer_input])
+            return d
+
+        def deConv2d(layer_input):
+            u = layers.UpSampling2D(size=2)(layer_input)
+            u = layers.Conv2D(256, kernel_size=3, strides=1, padding='same')(u)
+            u = Activation('relu')(u)
+            return u
+
+        img_lr = layers.Input(shape=self.lr_shape)
+        g1 = layers.Conv2D(64, kernel_size=9, strides=1, padding='same')(img_lr)
+        g1 = Activation('relu')(g1)
+
+        r = residual_block(c1, self.genFilters)
+        for i in range(self.n_residual_blocks - 1):
+            r = residual_block(r, self.genFilters)
+
+        g2 = Conv2D(64, kernel_size=3, strides=1, padding='same')(r)
+        g2 = BatchNormalization(momentum=0.8)(g2)
+        g2 = Add()([g2, g1])
+
+        u1 = deConv2d(g2)
+        u2 = deConv2d(u1)
+
+        gen_hr = layers.Conv2D(self.channels, kernel_size=9, strides=1, padding='same', activation='tanh')(u2)
+
+        return Model(img_lr, gen_hr)
 
     def build_discriminator(self):
         def d_block(layer_input, filters, strides=1, batchNormal=True):

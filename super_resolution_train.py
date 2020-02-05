@@ -7,6 +7,7 @@ import numpy as np
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras import layers
 from tensorflow.keras import backend as K
+from tensorflow.keras.applications import VGG19
 
 # automatically get the data if it doesn't exist
 if not os.path.exists("data"):
@@ -43,7 +44,7 @@ class SUPER_RESOLUTION_PIXELS():
         self.val_generator = self.image_generator(self.batch_size, self.val_dir)
         self.in_sample_images, self.out_sample_images = next(self.val_generator)
 
-    def build_model(self):
+    def buildModelOnConvUpSampling(self):
         self.model = Sequential()
         self.model.add(layers.Conv2D(3, (3, 3), activation='relu', padding='same',
                                 input_shape=(self.input_width, self.input_height, self.channels)))
@@ -54,9 +55,24 @@ class SUPER_RESOLUTION_PIXELS():
         self.model.add(layers.UpSampling2D())
         self.model.add(layers.Conv2D(3, (3, 3), activation='relu', padding='same'))
 
-        # DONT ALTER metrics=[perceptual_distance]
         self.model.compile(optimizer='adam', loss='mse',
                       metrics=[self.perceptual_distance])
+
+    def build_model(self):
+        self.buildModelOnConvUpSampling()
+
+        # Below code represents GAN Architecture
+        self.vgg = self.build_vgg()
+        self.vgg.trainable = False
+        self.vgg.compile(loss='mse', optimizer='adam', metrics=['accuracy'])
+
+    def build_vgg(self):
+        # Pre-trained VGG19 model to extract image features
+        vgg = VGG19(weights='imagenet')
+        img = Input(shape = self.hr_shape)
+        img_features = vgg(img)
+
+        return Model(img, img_features)
 
     def train(self):
         self.model.fit_generator(self.image_generator(self.batch_size, self.train_dir),

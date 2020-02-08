@@ -6,5 +6,6 @@ Enlarges the size of image by adding closely related pixels.
 This is a combination of 2 types of neural network models
 * Generator
 * Discriminator
+
 While training, both try to outsmart each other leading to increase in
 generated images accuracy.

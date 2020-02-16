@@ -1,12 +1,14 @@
-import random
-import glob
-import subprocess
 import os
-from PIL import Image
+import glob
+import random
+import subprocess
 import numpy as np
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras import layers
+from PIL import Image
 from tensorflow.keras import backend as K
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import LeakyReLU
+from tensorflow.keras.layers import Conv2D, UpSampling2D, Input, Dense
+from tensorflow.keras.layers import BatchNormalization, Activation, Add
 from tensorflow.keras.applications import VGG19
 
 # automatically get the data if it doesn't exist
@@ -46,19 +48,20 @@ class SUPER_RESOLUTION_PIXELS():
 
     def buildModelOnConvUpSampling(self):
         self.model = Sequential()
-        self.model.add(layers.Conv2D(3, (3, 3), activation='relu', padding='same',
+        self.model.add(Conv2D(3, (3, 3), activation='relu', padding='same',
                                 input_shape=(self.input_width, self.input_height, self.channels)))
-        self.model.add(layers.UpSampling2D())
-        self.model.add(layers.Conv2D(3, (3, 3), activation='relu', padding='same'))
-        self.model.add(layers.UpSampling2D())
-        self.model.add(layers.Conv2D(3, (3, 3), activation='relu', padding='same'))
-        self.model.add(layers.UpSampling2D())
-        self.model.add(layers.Conv2D(3, (3, 3), activation='relu', padding='same'))
+        self.model.add(UpSampling2D())
+        self.model.add(Conv2D(3, (3, 3), activation='relu', padding='same'))
+        self.model.add(UpSampling2D())
+        self.model.add(Conv2D(3, (3, 3), activation='relu', padding='same'))
+        self.model.add(UpSampling2D())
+        self.model.add(Conv2D(3, (3, 3), activation='relu', padding='same'))
 
         self.model.compile(optimizer='adam', loss='mse',
                       metrics=[self.perceptual_distance])
 
     def build_model(self):
+        # basic model with Conv & UpSample
         self.buildModelOnConvUpSampling()
 
         # Below code represents GAN Architecture
@@ -90,49 +93,49 @@ class SUPER_RESOLUTION_PIXELS():
         """
 
         def residual_block(layer_input, filters):
-            d = layers.Conv2D(filters, kernel_size=3, strides=1, padding='same')(layer_input)
-            d = layers.Activation('relu')(d)
-            d = layers.BatchNormalization(momentum=0.8)(d)
-            d = layers.Conv2D(filters, kernel_size=3, strides=1, padding='same')(d)
-            d = layers.BatchNormalization(momentum=0.8)(d)
-            d = layers.Add()([d, layer_input])
+            d = Conv2D(filters, kernel_size=3, strides=1, padding='same')(layer_input)
+            d = Activation('relu')(d)
+            d = BatchNormalization(momentum=0.8)(d)
+            d = Conv2D(filters, kernel_size=3, strides=1, padding='same')(d)
+            d = BatchNormalization(momentum=0.8)(d)
+            d = Add()([d, layer_input])
             return d
 
         def deConv2d(layer_input):
-            u = layers.UpSampling2D(size=2)(layer_input)
-            u = layers.Conv2D(256, kernel_size=3, strides=1, padding='same')(u)
-            u = layers.Activation('relu')(u)
+            u = UpSampling2D(size=2)(layer_input)
+            u = Conv2D(256, kernel_size=3, strides=1, padding='same')(u)
+            u = Activation('relu')(u)
             return u
 
-        img_lr = layers.Input(shape=self.lr_shape)
-        g1 = layers.Conv2D(64, kernel_size=9, strides=1, padding='same')(img_lr)
-        g1 = layers.Activation('relu')(g1)
+        img_lr = Input(shape=self.lr_shape)
+        g1 = Conv2D(64, kernel_size=9, strides=1, padding='same')(img_lr)
+        g1 = Activation('relu')(g1)
 
         r = residual_block(c1, self.genFilters)
         for i in range(self.n_residual_blocks - 1):
             r = residual_block(r, self.genFilters)
 
-        g2 = layers.Conv2D(64, kernel_size=3, strides=1, padding='same')(r)
-        g2 = layers.BatchNormalization(momentum=0.8)(g2)
-        g2 = layers.Add()([g2, g1])
+        g2 = Conv2D(64, kernel_size=3, strides=1, padding='same')(r)
+        g2 = BatchNormalization(momentum=0.8)(g2)
+        g2 = Add()([g2, g1])
 
         u1 = deConv2d(g2)
         u2 = deConv2d(u1)
 
-        gen_hr = layers.Conv2D(self.channels, kernel_size=9, strides=1, padding='same', activation='tanh')(u2)
+        gen_hr = Conv2D(self.channels, kernel_size=9, strides=1, padding='same', activation='tanh')(u2)
 
         return Model(img_lr, gen_hr)
 
     def build_discriminator(self):
         def d_block(layer_input, filters, strides=1, batchNormal=True):
-            d = layers.Conv2D(filters, kernel_size=3, strides=strides, padding='same')(layer_input)
-            d = layers.LeakyReLU(alpha=0.2)(d)
+            d = Conv2D(filters, kernel_size=3, strides=strides, padding='same')(layer_input)
+            d = LeakyReLU(alpha=0.2)(d)
             if batchNormal:
                 d = BatchNormalization(momentum=0.8)(d)
             return d
 
         # Input image
-        d0 = layers.Input(shape=self.hr_shape)
+        d0 = Input(shape=self.hr_shape)
         d1 = d_block(d0, self.disFilters, batchNormal=False)
         d2 = d_block(d1, self.disFilters, strides=2)
         d3 = d_block(d2, self.disFilters * 2)
@@ -142,9 +145,9 @@ class SUPER_RESOLUTION_PIXELS():
         d7 = d_block(d6, self.disFilters * 8)
         d8 = d_block(d7, self.disFilters * 8, strides=2)
 
-        d9 = layers.Dense(self.disFilters*16)(d8)
-        d10 = layers.LeakyReLU(alpha=0.2)(d9)
-        validity = layers.Dense(1, activation='sigmoid')(d10)
+        d9 = Dense(self.disFilters*16)(d8)
+        d10 = LeakyReLU(alpha=0.2)(d9)
+        validity = Dense(1, activation='sigmoid')(d10)
 
         return Model(d10, validity)
 
@@ -183,7 +186,7 @@ class SUPER_RESOLUTION_PIXELS():
 def main():
     sr_pixels = SUPER_RESOLUTION_PIXELS()
     sr_pixels.build_model()
-    sr_pixels.train()
+    #sr_pixels.train()
 
 if __name__ == "__main__":
     main()

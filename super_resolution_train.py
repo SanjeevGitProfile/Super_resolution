@@ -69,6 +69,26 @@ class SUPER_RESOLUTION_PIXELS():
         self.vgg.trainable = False
         self.vgg.compile(loss='mse', optimizer='adam', metrics=['accuracy'])
 
+        self.discriminator = self.build_discriminator()
+        self.dicrimator.compile(loss='mse', optimizer=Adam(0.0002, 0.5), metrics=['accuracy'])
+
+        self.generator = self.build_generator()
+
+        image_hr = Input(shape=self.hr_shape)
+        image_lr = Input(shape=self.lr_shape)
+
+        generated_hr = self.generator(image_lr)
+        generated_features = self.vgg(generated_hr)
+
+        self.discriminator.trainable = False
+
+        validity = self.discriminator(generated_hr)
+        self.combined_model = Model([image_lr, image_hr], [validity, generated_features])
+        self.combined.compile(loss=['binary_crossentropy', 'mse'],
+                              loss_weights = [le-3, 1],
+                              optimizer=Adam(0.0002, 0.5))
+
+
     def build_vgg(self):
         # Pre-trained VGG19 model to extract image features
         vgg = VGG19(weights='imagenet')

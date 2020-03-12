@@ -64,13 +64,13 @@ class SUPER_RESOLUTION_PIXELS():
         # basic model with Conv & UpSample
         self.buildModelOnConvUpSampling()
 
-        # Below code represents GAN Architecture
+        # GAN architecture - combine generator & discriminator
         self.vgg = self.build_vgg()
         self.vgg.trainable = False
         self.vgg.compile(loss='mse', optimizer='adam', metrics=['accuracy'])
 
         self.discriminator = self.build_discriminator()
-        self.dicrimator.compile(loss='mse', optimizer=Adam(0.0002, 0.5), metrics=['accuracy'])
+        self.discriminator.compile(loss='mse', optimizer=Adam(0.0002, 0.5), metrics=['accuracy'])
 
         self.generator = self.build_generator()
 

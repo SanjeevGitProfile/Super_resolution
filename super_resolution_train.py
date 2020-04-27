@@ -34,9 +34,9 @@ class SUPER_RESOLUTION_PIXELS():
         self.val_dir = 'data/test'
         self.train_dir = 'data/train'
 
-        self.disFilters = 64
-        self.genFilters = 64
-        self.n_residual_blocks = 8
+        self.disFilters = 16
+        self.genFilters = 16
+        self.n_residual_blocks = 4
 
         self.num_steps_per_epoch = len(
             glob.glob(self.train_dir + "/*-in.jpg")) // self.batch_size
@@ -123,26 +123,27 @@ class SUPER_RESOLUTION_PIXELS():
 
         def deConv2d(layer_input):
             u = UpSampling2D(size=2)(layer_input)
-            u = Conv2D(256, kernel_size=3, strides=1, padding='same')(u)
+            u = Conv2D(16, kernel_size=3, strides=1, padding='same')(u)
             u = Activation('relu')(u)
             return u
 
         img_lr = Input(shape=self.lr_shape)
-        g1 = Conv2D(64, kernel_size=9, strides=1, padding='same')(img_lr)
+        g1 = Conv2D(16, kernel_size=9, strides=1, padding='same')(img_lr)
         g1 = Activation('relu')(g1)
 
-        r = residual_block(c1, self.genFilters)
+        r = residual_block(g1, self.genFilters)
         for i in range(self.n_residual_blocks - 1):
             r = residual_block(r, self.genFilters)
 
-        g2 = Conv2D(64, kernel_size=3, strides=1, padding='same')(r)
+        g2 = Conv2D(16, kernel_size=3, strides=1, padding='same')(r)
         g2 = BatchNormalization(momentum=0.8)(g2)
         g2 = Add()([g2, g1])
 
         u1 = deConv2d(g2)
         u2 = deConv2d(u1)
+        u3 = deConv2d(u2)
 
-        gen_hr = Conv2D(self.channels, kernel_size=9, strides=1, padding='same', activation='tanh')(u2)
+        gen_hr = Conv2D(self.channels, kernel_size=9, strides=1, padding='same', activation='tanh')(u3)
 
         return Model(img_lr, gen_hr)
 

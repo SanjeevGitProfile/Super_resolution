@@ -62,17 +62,15 @@ class SUPER_RESOLUTION_PIXELS():
 
     def build_model(self):
         # basic model with Conv & UpSample
-        self.buildModelOnConvUpSampling()
+        # self.buildModelOnConvUpSampling()
 
         # GAN architecture - combine generator & discriminator
-        self.vgg = self.build_vgg()
-        self.vgg.trainable = False
-        self.vgg.compile(loss='mse', optimizer='adam', metrics=['accuracy'])
-
         self.discriminator = self.build_discriminator()
         self.discriminator.compile(loss='mse', optimizer=Adam(0.0002, 0.5), metrics=['accuracy'])
 
         self.generator = self.build_generator()
+        self.generator.compile(optimizer='adam', loss='mse',
+                                       metrics=[self.perceptual_distance])
 
         image_hr = Input(shape=self.hr_shape)
         image_lr = Input(shape=self.lr_shape)
@@ -88,23 +86,13 @@ class SUPER_RESOLUTION_PIXELS():
                               loss_weights = [le-3, 1],
                               optimizer=Adam(0.0002, 0.5))
 
-
-    def build_vgg(self):
-        # Pre-trained VGG19 model to extract image features
-        vgg = VGG19(weights='imagenet')
-        img = Input(shape = self.hr_shape)
-        img_features = vgg(img)
-
-        return Model(img, img_features)
-
     def train(self):
-        self.model.fit_generator(self.image_generator(self.batch_size, self.train_dir),
-                            steps_per_epoch=self.num_steps_per_epoch,
-                            epochs=self.num_epochs,
-                            validation_steps=self.val_steps_per_epoch,
-                            validation_data=self.val_generator)
-
-        self.model.save('sres_model.h5')
+        self.generator.fit_generator(self.image_generator(self.batch_size, self.train_dir),
+                                            steps_per_epoch=self.num_steps_per_epoch,
+                                            epochs=self.num_epochs,
+                                            validation_steps=self.val_steps_per_epoch,
+                                            validation_data=self.val_generator)
+        self.generator.save('generator_model.h5')
 
     def build_generator(self):
         """
